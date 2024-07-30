@@ -26,6 +26,15 @@ def initialize_parameters(input_dim, hidden_layers, output_dim):
     
     return parameters
 
+# Initialize velocity terms
+def initialize_velocity(parameters):
+    velocity = {}
+    L = len(parameters) // 2
+    for l in range(1, L + 1):
+        velocity[f"dW{l}"] = np.zeros_like(parameters[f"W{l}"])
+        velocity[f"db{l}"] = np.zeros_like(parameters[f"b{l}"])
+    return velocity
+
 # Forward propagation
 def sigmoid(Z):
     return 1 / (1 + np.exp(-Z))
@@ -49,8 +58,8 @@ def forward_propagation(X, parameters, hidden_layers):
     return AL, caches
 
 # Loss calculation
-def pi_squared_loss(Y, AL):
-    return np.mean((np.pi**2) * (Y - AL)**2)
+def mse_loss(Y, AL):
+    return (np.mean((Y - AL))**2)
 
 # Calculate percentage loss
 def percentage_loss(Y, AL):
@@ -80,131 +89,133 @@ def backward_propagation(X, Y, parameters, caches, hidden_layers):
     return grads
 
 # Update parameters
-def update_parameters(parameters, grads, learning_rate):
+def update_parameters(parameters, grads, velocity, learning_rate, momentum_rate):
     L = len(parameters) // 2
     
-    for l in range(1, L+1):
-        parameters[f"W{l}"] -= learning_rate * grads[f"dW{l}"]
-        parameters[f"b{l}"] -= learning_rate * grads[f"db{l}"]
+    for l in range(1, L + 1):
+        velocity[f"dW{l}"] = momentum_rate * velocity[f"dW{l}"] + (1 - momentum_rate) * grads[f"dW{l}"]
+        velocity[f"db{l}"] = momentum_rate * velocity[f"db{l}"] + (1 - momentum_rate) * grads[f"db{l}"]
+        
+        parameters[f"W{l}"] -= learning_rate * velocity[f"dW{l}"]
+        parameters[f"b{l}"] -= learning_rate * velocity[f"db{l}"]
     
-    return parameters
+    return parameters, velocity
 
-# Train the model
-def train_mlp(X, Y, hidden_layers, epochs, learning_rate):
+# Train the model 
+def train_mlp(X, Y, hidden_layers, epochs, learning_rate, momentum_rate, X_test, Y_test):
     input_dim = X.shape[1]
     output_dim = Y.shape[1]
     parameters = initialize_parameters(input_dim, hidden_layers, output_dim)
+    velocity = initialize_velocity(parameters)
+    
+    epoch_losses = []
     
     for epoch in range(epochs):
         AL, caches = forward_propagation(X, parameters, hidden_layers)
-        loss = pi_squared_loss(Y, AL)
+        loss = mse_loss(Y, AL)
         percent_loss = percentage_loss(Y, AL)
         grads = backward_propagation(X, Y, parameters, caches, hidden_layers)
-        parameters = update_parameters(parameters, grads, learning_rate)
+        parameters, velocity = update_parameters(parameters, grads, velocity, learning_rate, momentum_rate)
         
-        if epoch % 100 == 0:
-            print(f"Epoch {epoch}, Loss: {loss}, Percent Loss: {percent_loss:.2f}%")
-    
-    return parameters, loss, percent_loss
-
-# Perform k-fold cross-validation
-def k_fold_cross_validation(X, Y, hidden_layers, epochs, learning_rate, k=10):
-    fold_size = len(X) // k
-    indices = np.arange(len(X))
-    np.random.shuffle(indices)
-    
-    avg_loss = 0
-    avg_percent_loss = 0
-    
-    all_predictions_train = []
-    all_predictions_val = []
-    all_predictions_test = []
-    
-    for i in range(k):
-        validation_indices = indices[i*fold_size:(i+1)*fold_size]
-        training_indices = np.setdiff1d(indices, validation_indices)
-        
-        X_train, X_val = X[training_indices], X[validation_indices]
-        Y_train, Y_val = Y[training_indices], Y[validation_indices]
-        
-        # Train model
-        parameters, _, _ = train_mlp(X_train, Y_train, hidden_layers, epochs, learning_rate)
-        
-        # Predict on training and validation sets
-        AL_train, _ = forward_propagation(X_train, parameters, hidden_layers)
-        AL_val, _ = forward_propagation(X_val, parameters, hidden_layers)
-        
-        # Predict on test set (assuming X_test and Y_test are available globally)
+        # Evaluate the model
         AL_test, _ = forward_propagation(X_test, parameters, hidden_layers)
-        
-        all_predictions_train.append((Y_train, AL_train))
-        all_predictions_val.append((Y_val, AL_val))
-        all_predictions_test.append((Y_test, AL_test))
-        
-        # Calculate loss and percent loss
-        loss = pi_squared_loss(Y_val, AL_val)
-        percent_loss = percentage_loss(Y_val, AL_val)
-        
-        avg_loss += loss
-        avg_percent_loss += percent_loss
-        
-        print(f"Fold {i+1}, Validation Loss: {loss}, Validation Percent Loss: {percent_loss:.2f}%")
+        test_loss = mse_loss(Y_test, AL_test)
+        epoch_losses.append(test_loss)
     
-    avg_loss /= k
-    avg_percent_loss /= k
-    
-    return avg_loss, avg_percent_loss, all_predictions_train, all_predictions_val, all_predictions_test
+    return parameters, epoch_losses
 
 # Load and normalize data
 file_path = 'Flood_dataset.txt'
 X, Y = load_data(file_path)
 X, mean, std = normalize_data(X)
 
-# Split data into training, testing, and validation sets
-split_index = int(0.8 * len(X))
-X_train, X_test = X[:split_index], X[split_index:]
-Y_train, Y_test = Y[:split_index], Y[split_index:]
-
-# Hyperparameters
-hidden_layers = [10, 8, 5]
-epochs = 22000
-learning_rate = 0.0001
-k = 10
-
-# Perform k-fold cross-validation
-avg_loss, avg_percent_loss, all_predictions_train, all_predictions_val, all_predictions_test = k_fold_cross_validation(X_train, Y_train, hidden_layers, epochs, learning_rate, k)
-
-print(f"Average Loss: {avg_loss}, Average Percent Loss: {avg_percent_loss:.2f}%")
-
-# Plotting results for each fold
-for i, (train_data, val_data, test_data) in enumerate(zip(all_predictions_train, all_predictions_val, all_predictions_test)):
-    Y_train, AL_train = train_data
-    Y_val, AL_val = val_data
-    Y_test, AL_test = test_data
+# Implement 10-fold cross-validation
+def k_fold_cross_validation(X, Y, k=10):
+    fold_size = len(X) // k
+    indices = np.random.permutation(len(X))
     
-    # Plot training data
-    plt.figure(figsize=(12, 6))
-    plt.plot(range(len(Y_train)), Y_train, label='Real Data (Train)', linestyle='-', color='blue')
-    plt.plot(range(len(AL_train)), AL_train, label='Predicted Data (Train)', linestyle='--', color='red')
-    plt.legend()
-    plt.title(f'Training Data Fold {i+1}')
-    plt.show(block=False)  # Non-blocking show
+    fold_losses = []
+    fold_scores = []
+    final_parameters = None
+    final_loss = None
+    final_percent_loss = None
+    last_X_train, last_Y_train, last_X_test, last_Y_test = None, None, None, None
     
-    # Plot validation data
-    plt.figure(figsize=(12, 6))
-    plt.plot(range(len(Y_val)), Y_val, label='Real Data (Val)', linestyle='-', color='blue')
-    plt.plot(range(len(AL_val)), AL_val, label='Predicted Data (Val)', linestyle='--', color='red')
-    plt.legend()
-    plt.title(f'Validation Data Fold {i+1}')
-    plt.show(block=False)  # Non-blocking show
+    for i in range(k):
+        start, end = i * fold_size, (i + 1) * fold_size
+        test_indices = indices[start:end]
+        train_indices = np.concatenate((indices[:start], indices[end:]))
+        
+        X_train, Y_train = X[train_indices], Y[train_indices]
+        X_test, Y_test = X[test_indices], Y[test_indices]
+        
+        # Train the model
+        hidden_layers = [10, 5]
+        epochs = 15000
+        learning_rate = 0.0001
+        momentum_rate = 0.9
+        parameters, epoch_losses = train_mlp(X_train, Y_train, hidden_layers, epochs, learning_rate, momentum_rate, X_test, Y_test)
+        
+        # Evaluate the model
+        AL_test, _ = forward_propagation(X_test, parameters, hidden_layers)
+        test_loss = mse_loss(Y_test, AL_test)
+        test_percent_loss = percentage_loss(Y_test, AL_test)
+        
+        fold_losses.append(test_loss)
+        fold_scores.append(epoch_losses)
+        
+        if i == k - 1:
+            final_parameters = parameters
+            final_loss = test_loss
+            final_percent_loss = test_percent_loss
+            last_X_train, last_Y_train, last_X_test, last_Y_test = X_train, Y_train, X_test, Y_test
+        
+        print(f"Fold {i+1}, Test MSE Loss: {test_loss}, Test Percent Loss: {test_percent_loss:.2f}%")
     
-    # Plot test data
-    plt.figure(figsize=(12, 6))
-    plt.plot(range(len(Y_test)), Y_test, label='Real Data (Test)', linestyle='-', color='blue')
-    plt.plot(range(len(AL_test)), AL_test, label='Predicted Data (Test)', linestyle='--', color='red')
-    plt.legend()
-    plt.title(f'Test Data Fold {i+1}')
-    plt.show(block=False)  # Non-blocking show
+    avg_loss = np.mean(fold_losses)
+    avg_percent_loss = np.mean(test_percent_loss)
+    print(f"Average Test MSE Loss: {avg_loss}, Average Test Percent Loss: {avg_percent_loss:.2f}%")
+    
+    return final_parameters, final_loss, final_percent_loss, last_X_train, last_Y_train, last_X_test, last_Y_test, fold_scores, fold_losses, avg_loss, avg_percent_loss
 
-# Wait to ensure all figures are displayed
+# Perform 10-fold cross-validation
+parameters, final_loss, final_percent_loss, X_train, Y_train, X_test, Y_test, fold_scores, fold_losses, avg_loss, avg_percent_loss = k_fold_cross_validation(X, Y)
+ 
+# Plot results for training data (last fold)
+AL_train, _ = forward_propagation(X_train, parameters, [10, 5])
+AL_test, _ = forward_propagation(X_test, parameters, [10, 5])
+
+plt.figure(figsize=(10, 5))
+plt.plot(Y_train, label='Real Data (Train)', color='blue')
+plt.plot(AL_train, label='Predicted Data (Train)', color='red')
+plt.legend()
+plt.title(f'Training Data - Final MSE Loss: {final_loss:.7f}, % Loss: {final_percent_loss:.2f}%, AVG Loss: {avg_loss:.2f}, AVG % Loss: {avg_percent_loss:.2f}%')
+plt.show()
+
+# Plot results for testing data (last fold)
+plt.figure(figsize=(10, 5))
+plt.plot(Y_test, label='Real Data (Test)', color='blue')
+plt.plot(AL_test, label='Predicted Data (Test)', color='red')
+plt.legend()
+plt.title(f'Testing Data - Final MSE Loss: {final_loss:.7f}, % Loss: {final_percent_loss:.2f}%, AVG Loss: {avg_loss:.2f}, AVG % Loss: {avg_percent_loss:.2f}%')
+plt.show()
+
+# Plot Test MSE Loss over epochs for each fold
+plt.figure(figsize=(12, 8))
+colors = plt.cm.viridis(np.linspace(0, 1, len(fold_scores)))
+for i, epoch_losses in enumerate(fold_scores):
+    plt.plot(range(len(epoch_losses)), epoch_losses, color=colors[i], label=f'Fold {i+1}')
+plt.xlabel('Epoch')
+plt.ylabel('Test MSE Loss')
+plt.title('Test MSE Loss vs Epochs for Each Fold')
+plt.legend()
+plt.show()
+
+# Plot final Test MSE Loss for each fold
+plt.figure(figsize=(10, 5))
+plt.bar(range(1, len(fold_losses) + 1), fold_losses, color='skyblue', edgecolor='black')
+plt.xlabel('Fold')
+plt.ylabel('Test MSE Loss')
+plt.title('Test MSE Loss for Each Fold')
+plt.xticks(range(1, len(fold_losses) + 1))
 plt.show()
