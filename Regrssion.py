@@ -124,11 +124,6 @@ def train_mlp(X, Y, hidden_layers, epochs, learning_rate, momentum_rate, X_test,
     
     return parameters, epoch_losses
 
-# Load and normalize data
-file_path = 'Flood_dataset.txt'
-X, Y = load_data(file_path)
-X, mean, std = normalize_data(X)
-
 # Implement 10-fold cross-validation
 def k_fold_cross_validation(X, Y, k=10):
     fold_size = len(X) // k
@@ -178,6 +173,11 @@ def k_fold_cross_validation(X, Y, k=10):
     
     return final_parameters, final_loss, final_percent_loss, last_X_train, last_Y_train, last_X_test, last_Y_test, fold_scores, fold_losses, avg_loss, avg_percent_loss
 
+# Load and normalize data
+file_path = 'Flood_dataset.txt'
+X, Y = load_data(file_path)
+X, mean, std = normalize_data(X)
+
 # Perform 10-fold cross-validation
 parameters, final_loss, final_percent_loss, X_train, Y_train, X_test, Y_test, fold_scores, fold_losses, avg_loss, avg_percent_loss = k_fold_cross_validation(X, Y)
  
@@ -219,20 +219,3 @@ plt.ylabel('Test MSE Loss')
 plt.title('Test MSE Loss for Each Fold')
 plt.xticks(range(1, len(fold_losses) + 1))
 plt.show()
-
-def Read_Data2(filename = 'cross.pat'):
-    data = []
-    input = []
-    design_output = []
-    with open(filename) as f:
-        a = f.readlines()
-        for line in range(1, len(a), 3):
-            z = np.array([float(element) for element in a[line][:-1].split()])
-            zz = np.array([float(element) for element in a[line+1].split()])
-            data.append(np.append(z, zz))
-    data = np.array(data)
-    np.random.shuffle(data)
-    for i in data:
-        input.append(i[:-2])
-        design_output.append(i[-2:])
-    return input, design_output

@@ -2,10 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Read and preprocess the data
-def Read_Data2(filename='cross.pat'):
+def Read_Data(filename='cross.pat'):
     data = []
     input = []
-    design_output = []
+    ans = []
     with open(filename) as f:
         a = f.readlines()
         for line in range(1, len(a), 3):
@@ -15,14 +15,14 @@ def Read_Data2(filename='cross.pat'):
     data = np.array(data)
     for i in data:
         input.append(i[:-2])
-        design_output.append(i[-2:])
-    return input, design_output
+        ans.append(i[-2:])
+    return input, ans
 
-def shuffle_Data(input, design_output):
-    combined = list(zip(input, design_output))
+def shuffle_Data(input, ans):
+    combined = list(zip(input, ans))
     np.random.shuffle(combined)
-    shuffled_input, shuffled_design_output = zip(*combined)
-    return np.array(shuffled_input), np.array(shuffled_design_output)
+    shuffled_input, shuffled_ans = zip(*combined)
+    return np.array(shuffled_input), np.array(shuffled_ans)
 
 def split_data(input_data, output_data, train_size=0.8):
     num_samples = len(input_data)
@@ -32,9 +32,6 @@ def split_data(input_data, output_data, train_size=0.8):
     y_train = output_data[:split_index]
     y_test = output_data[split_index:]
     return X_train, X_test, y_train, y_test
-
-input, design_output = Read_Data2()
-sinput, sdesign_output = shuffle_Data(input, design_output)
 
 # MLP implementation
 class MLP:
@@ -105,8 +102,13 @@ class MLP:
         labels = np.argmax(y, axis=1)
         return np.mean(predictions == labels)
 
+
+#Get data and shuffle
+input, design_output = Read_Data()
+sinput, sdesign_output = shuffle_Data(input, design_output)
+
 # Configuration
-layer_sizes = [2, 5, 2]  # Input layer, two hidden layers, output layer
+layer_sizes = [2, 5, 2]  # Input layer, 1 hidden layers, output layer
 learning_rate = 0.25
 epochs = 15000
 momentum_rate = 0.9
